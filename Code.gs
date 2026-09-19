@@ -21,14 +21,15 @@ const SHEET_SPECS = Object.freeze({
 });
 
 function doGet(event) {
-  if (event.parameter && event.parameter.ui === 'setup') {
+  const request = event && event.parameter ? event.parameter : {};
+  if (request.ui === 'setup') {
     return HtmlService.createHtmlOutputFromFile('Setup').setTitle('Workflow Sheets Adapter');
   }
-  return jsonResponse_(handleRequest_(event.parameter || {}));
+  return jsonResponse_(handleRequest_(request));
 }
 
 function doPost(event) {
-  const request = event.postData && event.postData.contents
+  const request = event && event.postData && event.postData.contents
     ? JSON.parse(event.postData.contents)
     : {};
   return jsonResponse_(handleRequest_(request));
@@ -135,13 +136,17 @@ function permanentlyDeleteMergedSources() {
   }
 
   sourceIds.forEach((spreadsheetId) => {
+    // Forces Apps Script's Drive authorization flow before the irreversible REST call.
+    DriveApp.getFileById(spreadsheetId);
     const response = UrlFetchApp.fetch(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}`, {
       headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
       method: 'delete',
       muteHttpExceptions: true,
     });
     if (response.getResponseCode() !== 204) {
-      throw new Error(`Falha ao excluir a fonte ${spreadsheetId}: HTTP ${response.getResponseCode()}.`);
+      throw new Error(
+        `Falha ao excluir a fonte ${spreadsheetId}: HTTP ${response.getResponseCode()}. ${response.getContentText()}`,
+      );
     }
   });
 
@@ -149,6 +154,21 @@ function permanentlyDeleteMergedSources() {
   config.lastMerge = { ...merge, sourcesDeletedAt: new Date().toISOString() };
   saveConfig_(config);
   return { deletedSheets: sourceKeys.map((key) => SHEET_SPECS[key].label) };
+}
+
+function inspectSourceDeletionAccess() {
+  const config = getConfig_();
+  return sourceKeys_().map((key) => {
+    const spreadsheetId = config.sheets[key].spreadsheetId;
+    const file = DriveApp.getFileById(spreadsheetId);
+    return {
+      label: SHEET_SPECS[key].label,
+      spreadsheetId,
+      owner: file.getOwner().getEmail(),
+      trashed: file.isTrashed(),
+      url: file.getUrl(),
+    };
+  });
 }
 function handleRequest_(request) {
   try {
@@ -162,6 +182,8 @@ function handleRequest_(request) {
         return appendRow_(request);
       case 'write':
         return writeRange_(request);
+      case 'appendJobAlert':
+        return appendJobAlert_(request);
       default:
         throw new Error(`Operação não suportada: ${request.operation}`);
     }
@@ -188,6 +210,35 @@ function appendRow_(request) {
   const sheet = SpreadsheetApp.openById(config.spreadsheetId).getSheetByName(parts[0]);
   if (!sheet) throw new Error(`A aba ${parts[0]} não existe.`);
   sheet.getRange(sheet.getLastRow() + 1, firstColumn, 1, width).setValues([values]);
+  return { ok: true };
+}
+
+function appendJobAlert_(request) {
+  const central = getSheetConfig_('alertasCentral');
+  const alert = request.alert;
+  if (!alert || typeof alert !== 'object') {
+    throw new Error('appendJobAlert requer um objeto alert.');
+  }
+
+  const title = String(alert.title || '').trim();
+  const url = String(alert.url || '').trim();
+  if (!title || !/^https:\/\/www\.linkedin\.com\/jobs\/view\/\d+/.test(url)) {
+    throw new Error('appendJobAlert requer título e URL válida de vaga do LinkedIn.');
+  }
+
+  const spreadsheet = SpreadsheetApp.openById(central.spreadsheetId);
+  const sheet = spreadsheet.getSheetByName('Alertas LinkedIn') || spreadsheet.insertSheet('Alertas LinkedIn');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['Origem', 'Cargo', 'Empresa', 'Local', 'Link', 'Detectado em']);
+  }
+  sheet.appendRow([
+    'LinkedIn',
+    title,
+    String(alert.company || '').trim(),
+    String(alert.location || '').trim(),
+    url,
+    new Date(),
+  ]);
   return { ok: true };
 }
 

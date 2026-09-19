@@ -11,6 +11,7 @@
       textarea { min-height: 4rem; resize: vertical; }
       button { background: #1455b8; border: 0; border-radius: .35rem; color: white; cursor: pointer; font: inherit; font-weight: 650; margin: 1.25rem .5rem 0 0; padding: .7rem 1rem; }
       button.secondary { background: #455468; }
+      button.danger { background: #b42318; }
       #status { margin-top: 1rem; white-space: pre-wrap; }
       .hint { color: #526174; font-size: .9rem; }
     </style>
@@ -22,7 +23,7 @@
     <button id="create-central" type="button">Criar planilha central</button>
     <button id="merge" class="secondary" type="button">Mesclar dados</button>
     <button id="delete-sources" class="danger" type="button">Excluir fontes mescladas</button>
-    <button id="save" class="secondary" type="button">Salvar sem mesclar</button>
+    <button id="inspect-delete-access" class="secondary" type="button">Verificar acesso às fontes</button>
     <p id="status" role="status"></p>
 
     <script>
@@ -42,6 +43,15 @@
           })
           .withFailureHandler(showError)
           .permanentlyDeleteMergedSources();
+      });
+      document.getElementById('inspect-delete-access').addEventListener('click', () => {
+        status.textContent = 'Verificando propriedade e acesso às planilhas fonte…';
+        google.script.run
+          .withSuccessHandler((result) => {
+            status.textContent = JSON.stringify(result, null, 2);
+          })
+          .withFailureHandler(showError)
+          .inspectSourceDeletionAccess();
       });
       document.getElementById('create-central').addEventListener('click', () => save('central'));
       document.getElementById('merge').addEventListener('click', () => {
