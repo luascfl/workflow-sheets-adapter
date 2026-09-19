@@ -184,6 +184,8 @@ function handleRequest_(request) {
         return writeRange_(request);
       case 'appendJobAlert':
         return appendJobAlert_(request);
+      case 'appendVacancyAlert':
+        return appendVacancyAlert_(request);
       default:
         throw new Error(`Operação não suportada: ${request.operation}`);
     }
@@ -233,6 +235,36 @@ function appendJobAlert_(request) {
   }
   sheet.appendRow([
     'LinkedIn',
+    title,
+    String(alert.company || '').trim(),
+    String(alert.location || '').trim(),
+    url,
+    new Date(),
+  ]);
+  return { ok: true };
+}
+
+function appendVacancyAlert_(request) {
+  const central = getSheetConfig_('alertasCentral');
+  const alert = request.alert;
+  const platform = String(alert && alert.platform || '').trim();
+  if (!['CIEE', 'ESPRO TAQE', 'ISBET', 'IEL Bahia', 'Start Carreiras'].includes(platform)) {
+    throw new Error('appendVacancyAlert requer uma plataforma permitida.');
+  }
+
+  const title = String(alert.title || '').trim();
+  const url = String(alert.url || '').trim();
+  if (!title || !/^https:\/\//.test(url)) {
+    throw new Error('appendVacancyAlert requer título e URL HTTPS.');
+  }
+
+  const spreadsheet = SpreadsheetApp.openById(central.spreadsheetId);
+  const sheet = spreadsheet.getSheetByName('Alertas capturados') || spreadsheet.insertSheet('Alertas capturados');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['Plataforma', 'Cargo', 'Empresa', 'Local', 'Link', 'Detectado em']);
+  }
+  sheet.appendRow([
+    platform,
     title,
     String(alert.company || '').trim(),
     String(alert.location || '').trim(),
