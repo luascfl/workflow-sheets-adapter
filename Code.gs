@@ -40,6 +40,7 @@ function getSetupState() {
   return {
     endpoint: ScriptApp.getService().getUrl(),
     accessToken: config.accessToken || '',
+    sourcesDeleted: Boolean(config.lastMerge && config.lastMerge.sourcesDeletedAt),
     sheets: Object.keys(SHEET_SPECS).map((key) => ({
       key,
       label: SHEET_SPECS[key].label,
@@ -54,6 +55,13 @@ function getSetupState() {
 
 function saveSetupState(form) {
   saveConfig_(buildConfig_(form, false));
+  return getSetupState();
+}
+
+function rotateAccessToken() {
+  const config = getConfig_();
+  config.accessToken = createAccessToken_();
+  saveConfig_(config);
   return getSetupState();
 }
 

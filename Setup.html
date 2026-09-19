@@ -18,21 +18,25 @@
   </head>
   <body>
     <h1>Workflow Sheets Adapter</h1>
-    <p>Informe as seis fontes. O adapter cria uma planilha central com uma aba por origem e preserva cada registro, incluindo plataforma e aba de origem.</p>
+    <p id="intro">Configure as fontes para mesclar alertas em uma planilha central.</p>
     <form id="setup-form"></form>
-    <button id="create-central" type="button">Criar planilha central</button>
-    <button id="merge" class="secondary" type="button">Mesclar dados</button>
-    <button id="delete-sources" class="danger" type="button">Excluir fontes mescladas</button>
-    <button id="inspect-delete-access" class="secondary" type="button">Verificar acesso às fontes</button>
+    <div id="migration-actions">
+      <button id="create-central" type="button">Criar planilha central</button>
+      <button id="merge" class="secondary" type="button">Mesclar dados</button>
+      <button id="delete-sources" class="danger" type="button">Excluir fontes mescladas</button>
+      <button id="inspect-delete-access" class="secondary" type="button">Verificar acesso às fontes</button>
+    </div>
+    <button id="rotate-token" class="secondary" type="button">Gerar novo token</button>
     <p id="status" role="status"></p>
 
     <script>
       const form = document.getElementById('setup-form');
       const status = document.getElementById('status');
+      const intro = document.getElementById('intro');
+      const migrationActions = document.getElementById('migration-actions');
       let state;
 
       google.script.run.withSuccessHandler(render).getSetupState();
-      document.getElementById('save').addEventListener('click', () => save('save'));
       document.getElementById('delete-sources').addEventListener('click', () => {
         if (!confirm('Excluir permanentemente as seis planilhas fonte já mescladas? Esta ação não pode ser desfeita.')) return;
         status.textContent = 'Excluindo as planilhas fonte…';
@@ -52,6 +56,16 @@
           })
           .withFailureHandler(showError)
           .inspectSourceDeletionAccess();
+      });
+      document.getElementById('rotate-token').addEventListener('click', () => {
+        if (!confirm('Gerar um token novo? Os userscripts configurados com o token anterior precisarão ser atualizados.')) return;
+        google.script.run
+          .withSuccessHandler((next) => {
+            render(next);
+            status.textContent = 'Token substituído. Atualize o token nos userscripts.';
+          })
+          .withFailureHandler(showError)
+          .rotateAccessToken();
       });
       document.getElementById('create-central').addEventListener('click', () => save('central'));
       document.getElementById('merge').addEventListener('click', () => {
@@ -90,20 +104,25 @@
 
       function render(next) {
         state = next;
+        const centralOnly = state.sourcesDeleted;
+        intro.textContent = centralOnly
+          ? 'As seis fontes foram excluídas. Esta tela mantém apenas o endpoint e o token para alimentar a planilha central com novas vagas.'
+          : 'Configure as fontes para mesclar alertas em uma planilha central.';
+        migrationActions.hidden = centralOnly;
         form.replaceChildren();
-        state.sheets.forEach((sheet) => {
-          const label = document.createElement('label');
-          label.textContent = sheet.label;
-          const input = document.createElement('input');
-          input.dataset.key = sheet.key;
-          input.placeholder = sheet.isCentral
-            ? 'Criada pelo botão acima'
-            : 'https://docs.google.com/spreadsheets/d/.../edit';
-          input.value = sheet.spreadsheetUrl;
-          input.readOnly = sheet.isCentral;
-          label.append(input);
-          form.append(label);
-        });
+        state.sheets
+          .filter((sheet) => !centralOnly || sheet.isCentral)
+          .forEach((sheet) => {
+            const label = document.createElement('label');
+            label.textContent = sheet.label;
+            const input = document.createElement('input');
+            input.dataset.key = sheet.key;
+            input.placeholder = 'Criada pelo botão acima';
+            input.value = sheet.spreadsheetUrl;
+            input.readOnly = true;
+            label.append(input);
+            form.append(label);
+          });
 
         const endpointLabel = document.createElement('label');
         endpointLabel.textContent = 'Endpoint do adapter';
@@ -123,7 +142,9 @@
 
         const hint = document.createElement('p');
         hint.className = 'hint';
-        hint.textContent = 'A mesclagem não apaga as seis planilhas antigas. A exclusão só será feita depois de você confirmar a cópia central.';
+        hint.textContent = centralOnly
+          ? 'Os userscripts usam o endpoint e o token para salvar novas vagas na central. Nenhuma configuração de fontes é necessária.'
+          : 'A exclusão só será feita depois de você confirmar a cópia central.';
         form.append(hint);
       }
     </script>
