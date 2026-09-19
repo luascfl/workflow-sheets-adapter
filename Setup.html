@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <base target="_top">
+    <style>
+      body { font: 14px system-ui, sans-serif; margin: 2rem auto; max-width: 44rem; color: #172033; }
+      h1 { margin-bottom: .25rem; }
+      p { line-height: 1.45; }
+      label { display: block; font-weight: 650; margin-top: 1rem; }
+      input, textarea { box-sizing: border-box; font: inherit; margin-top: .35rem; padding: .6rem; width: 100%; }
+      textarea { min-height: 5rem; resize: vertical; }
+      button { background: #1455b8; border: 0; border-radius: .35rem; color: white; cursor: pointer; font: inherit; font-weight: 650; margin-top: 1.25rem; padding: .7rem 1rem; }
+      #status { margin-top: 1rem; white-space: pre-wrap; }
+      .hint { color: #526174; font-size: .9rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Workflow Sheets Adapter</h1>
+    <p>Informe apenas as planilhas usadas pelos workflows que você quer ativar. Campos vazios permanecem desativados.</p>
+    <form id="setup-form"></form>
+    <button id="save" type="button">Salvar configuração</button>
+    <p id="status" role="status"></p>
+
+    <script>
+      const form = document.getElementById('setup-form');
+      const status = document.getElementById('status');
+
+      google.script.run.withSuccessHandler(render).getSetupState();
+
+      document.getElementById('save').addEventListener('click', () => {
+        const values = {};
+        form.querySelectorAll('input[data-key]').forEach((input) => {
+          values[input.dataset.key] = input.value;
+        });
+        status.textContent = 'Validando acesso às planilhas…';
+        google.script.run
+          .withSuccessHandler((state) => {
+            render(state);
+            status.textContent = 'Configuração salva. Copie o endpoint e o token para o menu Configurar dos userscripts.';
+          })
+          .withFailureHandler((error) => {
+            status.textContent = `Erro: ${error.message}`;
+          })
+          .saveSetupState(values);
+      });
+
+      function render(state) {
+        form.replaceChildren();
+        state.sheets.forEach((sheet) => {
+          const label = document.createElement('label');
+          label.textContent = sheet.label;
+          const input = document.createElement('input');
+          input.dataset.key = sheet.key;
+          input.placeholder = 'https://docs.google.com/spreadsheets/d/.../edit';
+          input.value = sheet.spreadsheetUrl;
+          label.append(input);
+          form.append(label);
+        });
+
+        const endpointLabel = document.createElement('label');
+        endpointLabel.textContent = 'Endpoint do adapter';
+        const endpoint = document.createElement('textarea');
+        endpoint.readOnly = true;
+        endpoint.value = state.endpoint || 'Disponível após a implantação como Web App.';
+        endpointLabel.append(endpoint);
+        form.append(endpointLabel);
+
+        const tokenLabel = document.createElement('label');
+        tokenLabel.textContent = 'Token de acesso';
+        const token = document.createElement('textarea');
+        token.readOnly = true;
+        token.value = state.accessToken || 'Disponível após salvar a primeira configuração.';
+        tokenLabel.append(token);
+        form.append(tokenLabel);
+
+        const hint = document.createElement('p');
+        hint.className = 'hint';
+        hint.textContent = 'O token fica somente no armazenamento local do Violentmonkey. Não o publique nem adicione ao repositório.';
+        form.append(hint);
+      }
+    </script>
+  </body>
+</html>
