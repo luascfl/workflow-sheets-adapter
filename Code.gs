@@ -1,5 +1,7 @@
 const CONFIG_PROPERTY = 'WORKFLOW_SHEETS_ADAPTER_CONFIG';
 
+const CENTRAL_SPREADSHEET_ID = '1ftwnYkccSpqyY86qBzyXyzQnfog_mBhb2QqphqtL9JE';
+
 const SHEET_SPECS = Object.freeze({
   alertasCiee: {
     label: 'CIEE',
@@ -36,7 +38,7 @@ function doPost(event) {
 }
 
 function getSetupState() {
-  const config = getConfig_();
+  const config = recoverCentralOnlyState_();
   return {
     endpoint: ScriptApp.getService().getUrl(),
     accessToken: config.accessToken || '',
@@ -331,6 +333,21 @@ function clearImportedTabs_(spreadsheet) {
   spreadsheet.getSheets().forEach((sheet) => {
     if (sheet.getName() !== 'Instruções') spreadsheet.deleteSheet(sheet);
   });
+}
+
+function recoverCentralOnlyState_() {
+  const config = getConfig_();
+  if (Object.keys(config.sheets).length !== 0 || !config.accessToken) return config;
+
+  SpreadsheetApp.openById(CENTRAL_SPREADSHEET_ID);
+  config.sheets.alertasCentral = { spreadsheetId: CENTRAL_SPREADSHEET_ID };
+  config.lastMerge = {
+    centralSpreadsheetId: CENTRAL_SPREADSHEET_ID,
+    sourceKeys: sourceKeys_(),
+    sourcesDeletedAt: new Date().toISOString(),
+  };
+  saveConfig_(config);
+  return config;
 }
 
 function createDestinationName_(spreadsheet, sourceLabel, sourceTabName) {
