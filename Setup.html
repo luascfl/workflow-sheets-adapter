@@ -3,56 +3,82 @@
   <head>
     <base target="_top">
     <style>
-      body { font: 14px system-ui, sans-serif; margin: 2rem auto; max-width: 44rem; color: #172033; }
+      body { color: #172033; font: 14px system-ui, sans-serif; margin: 2rem auto; max-width: 44rem; }
       h1 { margin-bottom: .25rem; }
       p { line-height: 1.45; }
       label { display: block; font-weight: 650; margin-top: 1rem; }
       input, textarea { box-sizing: border-box; font: inherit; margin-top: .35rem; padding: .6rem; width: 100%; }
-      textarea { min-height: 5rem; resize: vertical; }
-      button { background: #1455b8; border: 0; border-radius: .35rem; color: white; cursor: pointer; font: inherit; font-weight: 650; margin-top: 1.25rem; padding: .7rem 1rem; }
+      textarea { min-height: 4rem; resize: vertical; }
+      button { background: #1455b8; border: 0; border-radius: .35rem; color: white; cursor: pointer; font: inherit; font-weight: 650; margin: 1.25rem .5rem 0 0; padding: .7rem 1rem; }
+      button.secondary { background: #455468; }
       #status { margin-top: 1rem; white-space: pre-wrap; }
       .hint { color: #526174; font-size: .9rem; }
     </style>
   </head>
   <body>
     <h1>Workflow Sheets Adapter</h1>
-    <p>Informe apenas as planilhas usadas pelos workflows que você quer ativar. Campos vazios permanecem desativados.</p>
+    <p>Informe as seis fontes. O adapter cria uma planilha central com uma aba por origem e preserva cada registro, incluindo plataforma e aba de origem.</p>
     <form id="setup-form"></form>
-    <button id="save" type="button">Salvar configuração</button>
+    <button id="create-central" type="button">Criar planilha central</button>
+    <button id="merge" class="secondary" type="button">Mesclar dados</button>
+    <button id="save" class="secondary" type="button">Salvar sem mesclar</button>
     <p id="status" role="status"></p>
 
     <script>
       const form = document.getElementById('setup-form');
       const status = document.getElementById('status');
+      let state;
 
       google.script.run.withSuccessHandler(render).getSetupState();
-
-      document.getElementById('save').addEventListener('click', () => {
-        const values = {};
-        form.querySelectorAll('input[data-key]').forEach((input) => {
-          values[input.dataset.key] = input.value;
-        });
-        status.textContent = 'Validando acesso às planilhas…';
+      document.getElementById('save').addEventListener('click', () => save('save'));
+      document.getElementById('create-central').addEventListener('click', () => save('central'));
+      document.getElementById('merge').addEventListener('click', () => {
+        status.textContent = 'Lendo e copiando os registros…';
         google.script.run
-          .withSuccessHandler((state) => {
-            render(state);
-            status.textContent = 'Configuração salva. Copie o endpoint e o token para o menu Configurar dos userscripts.';
+          .withSuccessHandler((result) => {
+            status.textContent = `Mesclagem concluída: ${result.importedRows} registros em ${result.importedTabs.length} abas.\n${result.spreadsheetUrl}`;
           })
-          .withFailureHandler((error) => {
-            status.textContent = `Erro: ${error.message}`;
-          })
-          .saveSetupState(values);
+          .withFailureHandler(showError)
+          .mergeConfiguredSheets();
       });
 
-      function render(state) {
+      function save(action) {
+        const values = formValues();
+        status.textContent = action === 'central' ? 'Criando central e validando fontes…' : 'Validando acesso às planilhas…';
+        const runner = google.script.run
+          .withSuccessHandler((next) => {
+            render(next);
+            status.textContent = action === 'central'
+              ? 'Planilha central criada. Agora use Mesclar dados.'
+              : 'Configuração salva.';
+          })
+          .withFailureHandler(showError);
+        if (action === 'central') runner.createCentralWorkbook(values);
+        else runner.saveSetupState(values);
+      }
+
+      function formValues() {
+        return Object.fromEntries([...form.querySelectorAll('input[data-key]')]
+          .map((input) => [input.dataset.key, input.value]));
+      }
+
+      function showError(error) {
+        status.textContent = `Erro: ${error.message}`;
+      }
+
+      function render(next) {
+        state = next;
         form.replaceChildren();
         state.sheets.forEach((sheet) => {
           const label = document.createElement('label');
           label.textContent = sheet.label;
           const input = document.createElement('input');
           input.dataset.key = sheet.key;
-          input.placeholder = 'https://docs.google.com/spreadsheets/d/.../edit';
+          input.placeholder = sheet.isCentral
+            ? 'Criada pelo botão acima'
+            : 'https://docs.google.com/spreadsheets/d/.../edit';
           input.value = sheet.spreadsheetUrl;
+          input.readOnly = sheet.isCentral;
           label.append(input);
           form.append(label);
         });
@@ -69,13 +95,13 @@
         tokenLabel.textContent = 'Token de acesso';
         const token = document.createElement('textarea');
         token.readOnly = true;
-        token.value = state.accessToken || 'Disponível após salvar a primeira configuração.';
+        token.value = state.accessToken || 'Disponível após criar a planilha central.';
         tokenLabel.append(token);
         form.append(tokenLabel);
 
         const hint = document.createElement('p');
         hint.className = 'hint';
-        hint.textContent = 'O token fica somente no armazenamento local do Violentmonkey. Não o publique nem adicione ao repositório.';
+        hint.textContent = 'A mesclagem não apaga as seis planilhas antigas. A exclusão só será feita depois de você confirmar a cópia central.';
         form.append(hint);
       }
     </script>
