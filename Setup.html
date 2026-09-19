@@ -21,6 +21,7 @@
     <form id="setup-form"></form>
     <button id="create-central" type="button">Criar planilha central</button>
     <button id="merge" class="secondary" type="button">Mesclar dados</button>
+    <button id="delete-sources" class="danger" type="button">Excluir fontes mescladas</button>
     <button id="save" class="secondary" type="button">Salvar sem mesclar</button>
     <p id="status" role="status"></p>
 
@@ -31,6 +32,17 @@
 
       google.script.run.withSuccessHandler(render).getSetupState();
       document.getElementById('save').addEventListener('click', () => save('save'));
+      document.getElementById('delete-sources').addEventListener('click', () => {
+        if (!confirm('Excluir permanentemente as seis planilhas fonte já mescladas? Esta ação não pode ser desfeita.')) return;
+        status.textContent = 'Excluindo as planilhas fonte…';
+        google.script.run
+          .withSuccessHandler((result) => {
+            render({ ...state, sheets: state.sheets.map((sheet) => sheet.isCentral ? sheet : { ...sheet, configured: false, spreadsheetUrl: '' }) });
+            status.textContent = `Excluídas permanentemente: ${result.deletedSheets.join(', ')}.`;
+          })
+          .withFailureHandler(showError)
+          .permanentlyDeleteMergedSources();
+      });
       document.getElementById('create-central').addEventListener('click', () => save('central'));
       document.getElementById('merge').addEventListener('click', () => {
         status.textContent = 'Lendo e copiando os registros…';

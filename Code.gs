@@ -111,13 +111,45 @@ function mergeConfiguredSheets() {
     });
   });
 
-  return {
+  const merge = {
     spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${central.getId()}/edit`,
     importedTabs: result,
     importedRows: result.reduce((total, item) => total + item.rows, 0),
   };
+  config.lastMerge = { centralSpreadsheetId: central.getId(), sourceKeys: sourceKeys_(), timestamp: new Date().toISOString() };
+  saveConfig_(config);
+  return merge;
 }
 
+function permanentlyDeleteMergedSources() {
+  const config = getConfig_();
+  const merge = config.lastMerge;
+  if (!merge || !config.sheets.alertasCentral || merge.centralSpreadsheetId !== config.sheets.alertasCentral.spreadsheetId) {
+    throw new Error('Mescle novamente as fontes antes de excluí-las.');
+  }
+
+  const sourceKeys = sourceKeys_();
+  const sourceIds = sourceKeys.map((key) => config.sheets[key].spreadsheetId);
+  if (new Set(sourceIds).size !== sourceIds.length || sourceIds.includes(config.sheets.alertasCentral.spreadsheetId)) {
+    throw new Error('A configuração das fontes é inválida para exclusão.');
+  }
+
+  sourceIds.forEach((spreadsheetId) => {
+    const response = UrlFetchApp.fetch(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}`, {
+      headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` },
+      method: 'delete',
+      muteHttpExceptions: true,
+    });
+    if (response.getResponseCode() !== 204) {
+      throw new Error(`Falha ao excluir a fonte ${spreadsheetId}: HTTP ${response.getResponseCode()}.`);
+    }
+  });
+
+  sourceKeys.forEach((key) => delete config.sheets[key]);
+  config.lastMerge = { ...merge, sourcesDeletedAt: new Date().toISOString() };
+  saveConfig_(config);
+  return { deletedSheets: sourceKeys.map((key) => SHEET_SPECS[key].label) };
+}
 function handleRequest_(request) {
   try {
     requireAccessToken_(request);
